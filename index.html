@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Carte — Pays d'origine et de destination</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #0f172a; color: #f0f0f0; }
+  header { padding: 20px 32px 12px; }
+  header h1 { font-size: 22px; font-weight: 600; color: #e2e8f0; }
+  header p { font-size: 13px; color: #94a3b8; margin-top: 4px; }
+  #map-wrap { width: 100%; padding: 0 16px; }
+  svg { display: block; width: 100%; }
+  .legend { display: flex; gap: 32px; flex-wrap: wrap; padding: 12px 32px 20px; font-size: 12px; }
+  .leg-group label { display: block; font-size: 11px; color: #94a3b8; margin-bottom: 5px; font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase; }
+  .leg-swatch { display: flex; align-items: center; gap: 5px; }
+  .swatch { width: 72px; height: 12px; border-radius: 2px; }
+  .leg-sub { display: flex; justify-content: space-between; font-size: 10px; color: #64748b; width: 72px; margin-top: 2px; }
+  .tip { position: fixed; pointer-events: none; background: #1e293b; border: 1px solid #334155;
+         border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #f0f0f0;
+         display: none; z-index: 9999; max-width: 220px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
+  .tip strong { display: block; font-size: 14px; margin-bottom: 6px; color: #e2e8f0; }
+  .tip .orig { color: #93c5fd; }
+  .tip .dest { color: #fca5a5; }
+  .tip .both { font-size: 11px; color: #a78bfa; margin-top: 4px; }
+  .country:hover { filter: brightness(1.3); cursor: pointer; }
+  .no-data { fill: #1e293b; }
+  .no-data:hover { fill: #1e293b; cursor: default; }
+  footer { padding: 10px 32px 24px; font-size: 11px; color: #475569; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Répartition des pays d'origine et de destination</h1>
+  <p>Survolez un pays pour afficher les pourcentages · Bleu = origine · Orange/rouge = destination · Violet = les deux</p>
+</header>
+
+<div class="legend">
+  <div class="leg-group">
+    <label>Pays d'origine</label>
+    <div class="leg-swatch">
+      <div class="swatch" style="background: linear-gradient(to right, #d4e9f7, #9ecae1, #6baed6, #2171b5, #08306b);"></div>
+    </div>
+    <div class="leg-sub"><span>faible</span><span>élevé</span></div>
+  </div>
+  <div class="leg-group">
+    <label>Pays de destination</label>
+    <div class="leg-swatch">
+      <div class="swatch" style="background: linear-gradient(to right, #fdd49e, #fc8d59, #e34a33, #b30000, #7f0000);"></div>
+    </div>
+    <div class="leg-sub"><span>faible</span><span>élevé</span></div>
+  </div>
+  <div class="leg-group">
+    <label>Les deux</label>
+    <div class="leg-swatch">
+      <div class="swatch" style="background: #7b4fa6;"></div>
+    </div>
+  </div>
+  <div class="leg-group">
+    <label>Aucune donnée</label>
+    <div class="leg-swatch">
+      <div class="swatch" style="background: #1e293b; border: 1px solid #334155;"></div>
+    </div>
+  </div>
+</div>
+
+<div id="map-wrap">
+  <svg id="map" viewBox="0 0 960 500" xmlns="http://www.w3.org/2000/svg"></svg>
+</div>
+
+<div class="tip" id="tip"></div>
+
+<footer>Données issues du fichier Excel · Visualisation interactive</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<script>
+const origineData = {
+  "276": 6.7, "40": 2.5, "56": 4.2, "76": 0.4, "854": 0.4,
+  "124": 0.8, "152": 0.4, "196": 0.4, "208": 0.4, "724": 4.6,
+  "840": 10.5, "250": 23.8, "300": 0.8, "348": 0.4, "372": 0.4,
+  "352": 0.4, "376": 1.7, "380": 10.0, "392": 2.9, "504": 0.8,
+  "578": 0.8, "528": 4.2, "826": 14.6, "756": 4.6, "752": 1.3,
+  "158": 0.4, "792": 0.4, "682": 0.4, "152": 0.4,
+};
+
+const destinationData = {
+  "710": 0.1, "276": 5.8, "682": 0.4, "32": 0.1, "51": 0.2,
+  "40": 0.7, "56": 1.6, "124": 1.4, "152": 0.1, "156": 0.1,
+  "410": 0.4, "384": 0.1, "208": 0.8, "818": 0.2, "784": 0.2,
+  "724": 1.6, "233": 0.1, "840": 7.4, "246": 0.4, "250": 54.8,
+  "268": 0.1, "300": 0.8, "348": 0.1, "372": 0.1, "380": 6.1,
+  "392": 0.7, "440": 0.1, "442": 0.2, "504": 1.4, "499": 0.1,
+  "578": 1.2, "528": 1.6, "616": 0.1, "620": 0.4, "642": 0.1,
+  "826": 7.4, "686": 0.2, "702": 0.2, "756": 1.1, "752": 1.1,
+  "203": 0.1, "764": 0.2, "788": 0.1,
+};
+
+const countryNames = {
+  "276":"Allemagne","40":"Autriche","56":"Belgique","76":"Brésil","854":"Burkina Faso",
+  "124":"Canada","152":"Chili","156":"Chine","196":"Chypre","208":"Danemark",
+  "818":"Égypte","784":"Émirats Arabes Unis","724":"Espagne","233":"Estonie","840":"États-Unis",
+  "246":"Finlande","250":"France","268":"Géorgie","300":"Grèce","348":"Hongrie",
+  "372":"Irlande","352":"Islande","376":"Israël","380":"Italie","392":"Japon",
+  "410":"Corée du Sud","440":"Lituanie","442":"Luxembourg","504":"Maroc","499":"Monténégro",
+  "578":"Norvège","528":"Pays-Bas","616":"Pologne","620":"Portugal","642":"Roumanie",
+  "826":"Royaume-Uni","686":"Sénégal","702":"Singapour","756":"Suisse","752":"Suède",
+  "158":"Taïwan","203":"Tchéquie","764":"Thaïlande","788":"Tunisie","792":"Turquie",
+  "710":"Afrique du Sud","32":"Argentine","51":"Arménie","682":"Arabie Saoudite",
+  "384":"Côte d'Ivoire",
+};
+
+function getBlue(v) {
+  if (v >= 20) return '#08306b';
+  if (v >= 10) return '#2171b5';
+  if (v >= 5)  return '#4292c6';
+  if (v >= 2)  return '#6baed6';
+  return '#d4e9f7';
+}
+function getOrange(v) {
+  if (v >= 40) return '#7f0000';
+  if (v >= 10) return '#b30000';
+  if (v >= 5)  return '#e34a33';
+  if (v >= 2)  return '#fc8d59';
+  return '#fdd49e';
+}
+
+const tip = document.getElementById('tip');
+const svg = d3.select('#map');
+const width = 960, height = 500;
+const projection = d3.geoNaturalEarth1().scale(153).translate([width/2, height/2]);
+const path = d3.geoPath(projection);
+
+d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(world => {
+  const countries = topojson.feature(world, world.objects.countries);
+
+  svg.selectAll('path')
+    .data(countries.features)
+    .join('path')
+    .attr('d', path)
+    .attr('stroke', '#0f172a')
+    .attr('stroke-width', 0.4)
+    .attr('class', d => {
+      const id = String(d.id);
+      return (origineData[id] == null && destinationData[id] == null) ? 'no-data' : 'country';
+    })
+    .attr('fill', d => {
+      const id = String(d.id);
+      const hasO = origineData[id] != null;
+      const hasD = destinationData[id] != null;
+      if (hasO && hasD) return '#7b4fa6';
+      if (hasO) return getBlue(origineData[id]);
+      if (hasD) return getOrange(destinationData[id]);
+      return '#1e293b';
+    })
+    .on('mousemove', (event, d) => {
+      const id = String(d.id);
+      const name = countryNames[id] || d.properties?.name || 'Inconnu';
+      const hasO = origineData[id] != null;
+      const hasD = destinationData[id] != null;
+      if (!hasO && !hasD) { tip.style.display = 'none'; return; }
+
+      let html = `<strong>${name}</strong>`;
+      if (hasO) html += `<div class="orig">▶ Origine : <b>${origineData[id].toFixed(1)}%</b></div>`;
+      if (hasD) html += `<div class="dest">▶ Destination : <b>${destinationData[id].toFixed(1)}%</b></div>`;
+      if (hasO && hasD) html += `<div class="both">Ce pays apparaît dans les deux catégories</div>`;
+
+      tip.innerHTML = html;
+      tip.style.display = 'block';
+      tip.style.left = (event.clientX + 14) + 'px';
+      tip.style.top  = (event.clientY - 36) + 'px';
+    })
+    .on('mouseleave', () => { tip.style.display = 'none'; });
+});
+
+document.addEventListener('mousemove', e => {
+  if (tip.style.display === 'block') {
+    tip.style.left = (e.clientX + 14) + 'px';
+    tip.style.top  = (e.clientY - 36) + 'px';
+  }
+});
+</script>
+</body>
+</html>
